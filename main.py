@@ -59,15 +59,26 @@ def get_all_text_files(directory, exclude_dirs=None, include_exts=None, exclude_
 def count_tokens_in_file(encoding, file_path):
     """
     Count the number of tokens in a single file.
+    Returns a tuple of (file_extension, token_count).
     """
     try:
         with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
             content = f.read()
         tokens = encoding.encode(content)
-        return len(tokens)
+        token_count = len(tokens)
+        _, ext = os.path.splitext(file_path)
+        ext = ext.lower() if ext else 'No Extension'
+        return (ext, token_count)
     except Exception as e:
         print(f"Error processing {file_path}: {e}")
-        return 0
+        return (None, 0)
+
+
+def format_number(n):
+    """
+    Format a number with commas as thousand separators.
+    """
+    return f"{n:,}"
 
 
 def main(directory, num_workers, exclude_dirs, include_exts, exclude_exts, model, verbose=False):
@@ -81,11 +92,15 @@ def main(directory, num_workers, exclude_dirs, include_exts, exclude_exts, model
     print(f"Scanning directory: {directory}")
     text_files = get_all_text_files(directory, exclude_dirs, include_exts, exclude_exts)
     total_files = len(text_files)
-    print(f"Found {total_files} text file(s) to process.")
+    print(f"Found {format_number(total_files)} text file(s) to process.")
 
     if total_files == 0:
         print("No text files found. Exiting.")
         return
+
+    # Initialize statistics dictionary
+    extension_stats = {}
+    total_tokens = 0
 
     # Use multiprocessing to speed up token counting
     pool = multiprocessing.Pool(processes=num_workers)
@@ -93,13 +108,18 @@ def main(directory, num_workers, exclude_dirs, include_exts, exclude_exts, model
 
     try:
         token_counts = pool.imap_unordered(count_func, text_files, chunksize=100)
-        total_tokens = 0
-        for idx, count in enumerate(token_counts, 1):
+        for idx, (ext, count) in enumerate(token_counts, 1):
+            if ext is None:
+                continue  # Skip files that couldn't be processed
+            if ext not in extension_stats:
+                extension_stats[ext] = {'files': 0, 'tokens': 0}
+            extension_stats[ext]['files'] += 1
+            extension_stats[ext]['tokens'] += count
             total_tokens += count
             if verbose and idx % 1000 == 0:
-                print(f"Processed {idx}/{total_files} files. Current token count: {total_tokens}")
+                print(f"Processed {format_number(idx)}/{format_number(total_files)} files. Current token count: {format_number(total_tokens)}")
     except KeyboardInterrupt:
-        print("Process interrupted by user. Terminating...")
+        print("\nProcess interrupted by user. Terminating...")
         pool.terminate()
         pool.join()
         sys.exit(1)
@@ -112,7 +132,17 @@ def main(directory, num_workers, exclude_dirs, include_exts, exclude_exts, model
         pool.close()
         pool.join()
 
-    print(f"Total tokens: {total_tokens}")
+    # Sort the extensions by token count descending
+    sorted_extensions = sorted(extension_stats.items(), key=lambda item: item[1]['tokens'], reverse=True)
+
+    # Prepare the table
+    header = f"{'-' * 75}\n{'File Extension':<30}{'Files':>15}{'Tokens':>20}\n{'-' * 75}"
+    print(header)
+    for ext, stats in sorted_extensions:
+        print(f"{ext:<30}{format_number(stats['files']):>15}{format_number(stats['tokens']):>20}")
+    print('-' * 75)
+    print(f"{'SUM:':<30}{format_number(total_files):>15}{format_number(total_tokens):>20}")
+    print('-' * 75)
 
 
 if __name__ == "__main__":

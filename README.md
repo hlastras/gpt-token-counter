@@ -13,6 +13,7 @@
 - **Model Selection**: Choose the tokenizer corresponding to different OpenAI models (e.g., `gpt-3.5`, `gpt-4`, `gpt-4o`).
 - **Parallel Processing**: Utilize multiple CPU cores to expedite the token counting process.
 - **Verbose Output**: Receive periodic updates on the token counting progress.
+- **Token Counting by File Type**: Get a detailed breakdown of tokens per file extension, sorted from highest to lowest.
 
 ## Prerequisites
 
@@ -29,9 +30,10 @@
    ```
 
 2. **Install Dependencies**:
-     ```bash
-     pip install -r requirements.txt
-     ```
+
+   ```bash
+   pip install -r requirements.txt
+   ```
 
 ## Usage
 
@@ -104,6 +106,27 @@ python main.py /path/to/your/codebase
    ```bash
    python main.py /path/to/your/codebase -e .git -i .py,.js -x .test -w 4 -m gpt-4 -v
    ```
+
+### Sample Output
+
+After running the script, you'll receive an output similar to the following, displaying a breakdown of tokens per file extension:
+
+```
+-------------------------------------------------------------------------------------------
+File Extension                 Files             Tokens
+-------------------------------------------------------------------------------------------
+.py                             1,234           123,456
+.js                               567            78,910
+.go                               345            67,890
+.md                               89            12,345
+.txt                               45             6,789
+No Extension                      2                 0
+-------------------------------------------------------------------------------------------
+SUM:                           2,081          207,490
+-------------------------------------------------------------------------------------------
+```
+
+*Note: The numbers above are illustrative and do not represent actual token counts.*
 
 ## How It Works
 
