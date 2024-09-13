@@ -24,21 +24,33 @@ def is_text_file(file_path, blocksize=512):
             text_chars = bytearray({7,8,9,10,12,13,27} | set(range(0x20, 0x100)))
             if not all(c in text_chars for c in chunk):
                 return False
-    except Exception as e:
+    except Exception:
         # If any exception occurs (e.g., permission issues), treat as binary
         return False
     return True
 
-def get_all_text_files(directory):
+def get_all_text_files(directory, exclude_dirs=None, include_exts=None, exclude_exts=None):
     """
-    Recursively get all text files in the directory.
+    Recursively get all text files in the directory, applying exclusion and inclusion rules.
     """
     text_files = []
     for root, dirs, files in os.walk(directory):
+        # Modify dirs in-place to exclude directories
+        if exclude_dirs is not None:
+            dirs[:] = [d for d in dirs if d not in exclude_dirs]
         for name in files:
             file_path = os.path.join(root, name)
-            if is_text_file(file_path):
-                text_files.append(file_path)
+            if not is_text_file(file_path):
+                continue
+            # Check for included extensions
+            if include_exts:
+                if not any(name.lower().endswith(ext.lower()) for ext in include_exts):
+                    continue
+            # Check for excluded extensions
+            if exclude_exts:
+                if any(name.lower().endswith(ext.lower()) for ext in exclude_exts):
+                    continue
+            text_files.append(file_path)
     return text_files
 
 def count_tokens_in_file(encoding, file_path):
@@ -54,7 +66,7 @@ def count_tokens_in_file(encoding, file_path):
         print(f"Error processing {file_path}: {e}")
         return 0
 
-def main(directory, num_workers, verbose=False):
+def main(directory, num_workers, exclude_dirs, include_exts, exclude_exts, verbose=False):
     # Initialize the encoding for GPT-4 (using 'gpt-4' if available, else 'cl100k_base')
     try:
         encoding = tiktoken.encoding_for_model("gpt-4o")
@@ -63,7 +75,7 @@ def main(directory, num_workers, verbose=False):
         encoding = tiktoken.get_encoding("cl100k_base")
 
     print(f"Scanning directory: {directory}")
-    text_files = get_all_text_files(directory)
+    text_files = get_all_text_files(directory, exclude_dirs, include_exts, exclude_exts)
     total_files = len(text_files)
     print(f"Found {total_files} text files to process.")
 
@@ -105,10 +117,33 @@ if __name__ == "__main__":
                         help="Number of parallel workers (default: number of CPU cores).")
     parser.add_argument("-v", "--verbose", action="store_true",
                         help="Enable verbose output.")
+    parser.add_argument("-e", "--exclude-dirs", type=str, default=".git",
+                        help="Comma-separated list of directories to exclude (default: .git). Use empty string to include all directories.")
+    parser.add_argument("-i", "--include-ext", type=str, default="",
+                        help="Comma-separated list of file extensions to include (e.g., .py,.go). If not set, all text files are included unless excluded.")
+    parser.add_argument("-x", "--exclude-ext", type=str, default="",
+                        help="Comma-separated list of file extensions to exclude (e.g., .md,.txt).")
     args = parser.parse_args()
 
-    if not os.path.isdir(args.directory):
-        print(f"Error: {args.directory} is not a valid directory.")
-        sys.exit(1)
+    # Process exclude_dirs
+    if args.exclude_dirs:
+        exclude_dirs = [d.strip() for d in args.exclude_dirs.split(",") if d.strip()]
+    else:
+        exclude_dirs = []
 
-    main(args.directory, args.workers, args.verbose)
+    # Process include_exts
+    if args.include_ext:
+        include_exts = [ext.strip() if ext.strip().startswith('.') else f".{ext.strip()}" for ext in args.include_ext.split(",") if ext.strip()]
+    else:
+        include_exts = None  # None means include all
+
+    # Process exclude_exts
+    if args.exclude_ext:
+        exclude_exts = [ext.strip() if ext.strip().startswith('.') else f".{ext.strip()}" for ext in args.exclude_ext.split(",") if ext.strip()]
+    else:
+        exclude_exts = None  # None means exclude none
+
+    if not args.exclude_dirs:
+        print("No directories are being excluded. Including all directories, including .git.")
+
+    main(args.directory, args.workers, exclude_dirs, include_exts, exclude_exts, args.verbose)
