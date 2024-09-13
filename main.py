@@ -10,6 +10,7 @@ except ImportError:
     print("tiktoken library not found. Install it using 'pip install tiktoken'")
     sys.exit(1)
 
+
 def is_text_file(file_path, blocksize=512):
     """
     Check if a file is a text file.
@@ -21,13 +22,14 @@ def is_text_file(file_path, blocksize=512):
             if b'\0' in chunk:
                 return False
             # Heuristic: If the majority of characters are printable or whitespace
-            text_chars = bytearray({7,8,9,10,12,13,27} | set(range(0x20, 0x100)))
+            text_chars = bytearray({7, 8, 9, 10, 12, 13, 27} | set(range(0x20, 0x100)))
             if not all(c in text_chars for c in chunk):
                 return False
     except Exception:
         # If any exception occurs (e.g., permission issues), treat as binary
         return False
     return True
+
 
 def get_all_text_files(directory, exclude_dirs=None, include_exts=None, exclude_exts=None):
     """
@@ -53,6 +55,7 @@ def get_all_text_files(directory, exclude_dirs=None, include_exts=None, exclude_
             text_files.append(file_path)
     return text_files
 
+
 def count_tokens_in_file(encoding, file_path):
     """
     Count the number of tokens in a single file.
@@ -66,18 +69,19 @@ def count_tokens_in_file(encoding, file_path):
         print(f"Error processing {file_path}: {e}")
         return 0
 
-def main(directory, num_workers, exclude_dirs, include_exts, exclude_exts, verbose=False):
-    # Initialize the encoding for GPT-4 (using 'gpt-4' if available, else 'cl100k_base')
+
+def main(directory, num_workers, exclude_dirs, include_exts, exclude_exts, model, verbose=False):
+    # Initialize the encoding for the specified model
     try:
-        encoding = tiktoken.encoding_for_model("gpt-4o")
+        encoding = tiktoken.encoding_for_model(model)
     except KeyError:
-        print("Model 'gpt-4' not found. Using 'cl100k_base' encoding.")
+        print(f"Model '{model}' not found. Using 'cl100k_base' encoding.")
         encoding = tiktoken.get_encoding("cl100k_base")
 
     print(f"Scanning directory: {directory}")
     text_files = get_all_text_files(directory, exclude_dirs, include_exts, exclude_exts)
     total_files = len(text_files)
-    print(f"Found {total_files} text files to process.")
+    print(f"Found {total_files} text file(s) to process.")
 
     if total_files == 0:
         print("No text files found. Exiting.")
@@ -86,7 +90,7 @@ def main(directory, num_workers, exclude_dirs, include_exts, exclude_exts, verbo
     # Use multiprocessing to speed up token counting
     pool = multiprocessing.Pool(processes=num_workers)
     count_func = partial(count_tokens_in_file, encoding)
-    
+
     try:
         token_counts = pool.imap_unordered(count_func, text_files, chunksize=100)
         total_tokens = 0
@@ -110,19 +114,51 @@ def main(directory, num_workers, exclude_dirs, include_exts, exclude_exts, verbo
 
     print(f"Total tokens: {total_tokens}")
 
+
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Count GPT-4 tokens in a codebase.")
+    parser = argparse.ArgumentParser(description="Count GPT tokens in a codebase.")
     parser.add_argument("directory", help="Path to the directory containing the codebase.")
-    parser.add_argument("-w", "--workers", type=int, default=multiprocessing.cpu_count(),
-                        help="Number of parallel workers (default: number of CPU cores).")
-    parser.add_argument("-v", "--verbose", action="store_true",
-                        help="Enable verbose output.")
-    parser.add_argument("-e", "--exclude-dirs", type=str, default=".git",
-                        help="Comma-separated list of directories to exclude (default: .git). Use empty string to include all directories.")
-    parser.add_argument("-i", "--include-ext", type=str, default="",
-                        help="Comma-separated list of file extensions to include (e.g., .py,.go). If not set, all text files are included unless excluded.")
-    parser.add_argument("-x", "--exclude-ext", type=str, default="",
-                        help="Comma-separated list of file extensions to exclude (e.g., .md,.txt).")
+    parser.add_argument(
+        "-w",
+        "--workers",
+        type=int,
+        default=multiprocessing.cpu_count(),
+        help="Number of parallel workers (default: number of CPU cores).",
+    )
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Enable verbose output.",
+    )
+    parser.add_argument(
+        "-e",
+        "--exclude-dirs",
+        type=str,
+        default=".git",
+        help="Comma-separated list of directories to exclude (default: .git). Use empty string to include all directories.",
+    )
+    parser.add_argument(
+        "-i",
+        "--include-ext",
+        type=str,
+        default="",
+        help="Comma-separated list of file extensions to include (e.g., .py,.go). If not set, all text files are included unless excluded.",
+    )
+    parser.add_argument(
+        "-x",
+        "--exclude-ext",
+        type=str,
+        default="",
+        help="Comma-separated list of file extensions to exclude (e.g., .md,.txt).",
+    )
+    parser.add_argument(
+        "-m",
+        "--model",
+        type=str,
+        default="gpt-4o",
+        help="Model to use for tokenization (e.g., gpt-3.5, gpt-4, gpt-4o). Default is gpt-4o.",
+    )
     args = parser.parse_args()
 
     # Process exclude_dirs
@@ -133,17 +169,33 @@ if __name__ == "__main__":
 
     # Process include_exts
     if args.include_ext:
-        include_exts = [ext.strip() if ext.strip().startswith('.') else f".{ext.strip()}" for ext in args.include_ext.split(",") if ext.strip()]
+        include_exts = [
+            ext.strip() if ext.strip().startswith(".") else f".{ext.strip()}"
+            for ext in args.include_ext.split(",")
+            if ext.strip()
+        ]
     else:
         include_exts = None  # None means include all
 
     # Process exclude_exts
     if args.exclude_ext:
-        exclude_exts = [ext.strip() if ext.strip().startswith('.') else f".{ext.strip()}" for ext in args.exclude_ext.split(",") if ext.strip()]
+        exclude_exts = [
+            ext.strip() if ext.strip().startswith(".") else f".{ext.strip()}"
+            for ext in args.exclude_ext.split(",")
+            if ext.strip()
+        ]
     else:
         exclude_exts = None  # None means exclude none
 
     if not args.exclude_dirs:
         print("No directories are being excluded. Including all directories, including .git.")
 
-    main(args.directory, args.workers, exclude_dirs, include_exts, exclude_exts, args.verbose)
+    main(
+        args.directory,
+        args.workers,
+        exclude_dirs,
+        include_exts,
+        exclude_exts,
+        args.model,
+        args.verbose,
+    )
